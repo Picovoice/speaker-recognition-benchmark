@@ -1,0 +1,11 @@
+matplotlib
+onnxruntime
+pveagle>=1.0.0
+pyannote.audio
+pyannote.metrics
+requests
+scipy
+soundfile
+speechbrain
+torch
+tqdm
