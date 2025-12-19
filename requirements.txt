@@ -1,11 +1,12 @@
 matplotlib
 onnxruntime
-pveagle>=1.0.0
+pveagle>=2.0.0
 pyannote.audio
 pyannote.metrics
 requests
 scipy
 soundfile
-speechbrain
-torch
+speechbrain==0.5.16
+torch==2.2.0
+numpy==1.26.4
 tqdm
