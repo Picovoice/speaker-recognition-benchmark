@@ -16,6 +16,7 @@ fontsize
 hparams
 libpv
 matplotlib
+numpy
 onnxruntime
 picovoice
 pretrained
