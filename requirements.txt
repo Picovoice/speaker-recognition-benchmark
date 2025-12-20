@@ -7,6 +7,6 @@ requests
 scipy
 soundfile
 speechbrain==0.5.16
-torch==2.2.0
+torch==2.8.0
 numpy==1.26.4
 tqdm
