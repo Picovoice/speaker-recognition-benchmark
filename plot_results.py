@@ -154,7 +154,7 @@ def _plot_cpu(
         ax.text(
             core_hour + 50,
             ENGINE_PRINT_NAMES[engine_type],
-            f"{core_hour:.0f}\nCore-hour",
+            f"{core_hour:.0f}\nCore-hour" if core_hour >= 1 else f"{core_hour:.2f}\nCore-hour",
             ha="center",
             va="center",
             fontsize=12,
