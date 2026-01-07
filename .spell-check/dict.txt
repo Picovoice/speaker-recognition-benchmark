@@ -14,6 +14,7 @@ edgecolor
 figsize
 fontsize
 hparams
+huggingface
 libpv
 matplotlib
 numpy
