@@ -1,273 +1,167 @@
-import os
 import time
 from enum import Enum
-from typing import *
+from typing import (
+    Any,
+    Sequence,
+    Tuple
+)
 
-import pveagle
-import soundfile as sf
+import numpy as np
 import torch
-import torchaudio
-from pyannote.audio import Audio
-from pyannote.audio import Inference
-from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
-from pyannote.core import Annotation
-from pyannote.core import Segment
-from scipy.spatial.distance import cdist
-from speechbrain.pretrained import EncoderClassifier
-
-Profile = Any
-
-NUM_THREADS = 1
-os.environ["OMP_NUM_THREADS"] = str(NUM_THREADS)
-os.environ["MKL_NUM_THREADS"] = str(NUM_THREADS)
-torch.set_num_threads(NUM_THREADS)
-torch.set_num_interop_threads(NUM_THREADS)
-
-AUDIO_FRAME_LENGTH_SEC = 0.096
 
 
 class Engines(Enum):
-    PICOVOICE_EAGLE = "PICOVOICE_EAGLE"
-    PYANNOTE = "PYANNOTE"
-    SPEECHBRAIN = "SPEECHBRAIN"
-    WESPEAKER = "WESPEAKER"
+    PICOVOICE_EAGLE = "eagle"
+    PYANNOTE = "pyannote"
+    SPEECHBRAIN = "speechbrain"
 
 
-class Engine:
-    def enrollment(self, path: str) -> Profile:
-        raise NotImplementedError()
+class Engine(object):
+    def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
+        raise NotImplementedError
 
-    def recognition(self, path: str, profile: Profile) -> Tuple[Annotation, float]:
-        raise NotImplementedError()
-
-    def cleanup(self) -> None:
-        raise NotImplementedError()
+    def infer(self, pcm: Sequence[int], profiles: Sequence[Sequence[float]]) -> Sequence[float]:
+        raise NotImplementedError
 
     def __str__(self) -> str:
-        raise NotImplementedError()
+        raise NotImplementedError
 
     @classmethod
-    def create(cls, x: Engines, **kwargs: Any) -> "Engine":
-        try:
-            subclass = {
-                Engines.PICOVOICE_EAGLE: PicovoiceEagleEngine,
-                Engines.PYANNOTE: PyAnnoteEngine,
-                Engines.SPEECHBRAIN: SpeechBrainEngine,
-                Engines.WESPEAKER: WeSpeakerEngine,
-            }[x]
-        except KeyError:
-            raise ValueError(f"cannot create `{cls.__name__}` of type `{x.value}`")
-        return subclass(**kwargs)
+    def create(cls, engine: Engines, **kwargs: Any) -> "Engine":
+        children = {
+            Engines.PICOVOICE_EAGLE: EagleEngine,
+            Engines.PYANNOTE: PyannoteEngine,
+            Engines.SPEECHBRAIN: SpeechBrainEngine,
+        }
+
+        if engine not in children:
+            raise ValueError(f"Cannot create `{cls.__name__}` of type `{engine.value}`")
+
+        return children[engine](**kwargs)
 
 
-class PicovoiceEagleEngine(Engine):
-    def __init__(
-            self,
-            access_key: str,
-            detection_threshold: float = 0.5) -> None:
+class EagleEngine(Engine):
+    def __init__(self, access_key: str, device: str, voice_threshold: float = .15) -> None:
+        import pveagle
 
-        self._access_key = access_key
-        self._detection_threshold = detection_threshold
-        self._eagle = None
-        super().__init__()
+        self._profiler = pveagle.create_profiler(
+            access_key=access_key,
+            device=device,
+            min_enrollment_chunks=3,
+            voice_threshold=voice_threshold)
+        self._eagle = pveagle.create_recognizer(
+            access_key=access_key,
+            device=device,
+            voice_threshold=voice_threshold)
 
-    def enrollment(self, path: str) -> Profile:
-        eagle_profiler = pveagle.create_profiler(
-            access_key=self._access_key)
+    def enroll(self, enrollments: Sequence[Sequence[int]]) -> Any:
+        frame_length = self._profiler.frame_length
 
-        data, sample_rate = sf.read(path, dtype="int16")
-        assert sample_rate == eagle_profiler.sample_rate
-        enroll_percentage, feedback = eagle_profiler.enroll(data)
+        progress = 0.
+        for enrollment in enrollments:
+            for i in range(len(enrollment) // self._profiler.frame_length):
+                self._profiler.enroll(enrollment[i * frame_length:(i + 1) * frame_length])
+            progress = self._profiler.flush()
+        if progress < 100.:
+            raise RuntimeError()
 
-        if enroll_percentage < 100.0:
-            raise ValueError(f"failed to create speaker profile for `{path}` with {enroll_percentage}% enrollment")
-
-        profile = eagle_profiler.export()
-        eagle_profiler.delete()
+        profile = self._profiler.export()
+        self._profiler.reset()
 
         return profile
 
-    def recognition(self, path: str, profile: Profile) -> Tuple[Annotation, float]:
-        eagle = pveagle.create_recognizer(
-            access_key=self._access_key,
-            speaker_profiles=[profile])
+    def infer(self, pcm: Sequence[int], profiles: Sequence[Any]) -> Tuple[Sequence[float], float, float]:
+        start_time = time.perf_counter()
+        res = self._eagle.process(pcm, speaker_profiles=profiles)
+        end_time = time.perf_counter()
+        if res is None:
+            raise RuntimeError()
+        
+        process_time = end_time - start_time
+        sample_time = len(pcm) / self._eagle.sample_rate
 
-        total_time = 0
-        data, sample_rate = sf.read(path, dtype="int16")
-        num_frames = len(data) // eagle.frame_length
-        frame_to_second = eagle.frame_length / eagle.sample_rate
-        step_frames = int(AUDIO_FRAME_LENGTH_SEC / frame_to_second)
-        assert step_frames > 0
-        scores_list = list()
-        start_time = 0
-        score_max = 0
-        tic = time.perf_counter()
-        for i in range(num_frames):
-            frame = data[i * eagle.frame_length:(i + 1) * eagle.frame_length]
-            scores = eagle.process(frame)
-            score_max = max(score_max, scores[0])
-            if (i + 1) % step_frames == 0:
-                end_time = (i + 1) * frame_to_second
-                scores_list.append((start_time, end_time, score_max))
-                start_time = end_time
-                score_max = 0
-        total_time += time.perf_counter() - tic
-
-        annotation = self._scores_to_annotation(scores_list, self._detection_threshold)
-
-        eagle.delete()
-
-        return annotation, total_time
-
-    @staticmethod
-    def _scores_to_annotation(scores_list: List[Tuple[float, float, float]], threshold: float) -> Annotation:
-        annotation = Annotation()
-        for start, end, scores in scores_list:
-            if scores > threshold:
-                annotation[Segment(start, end)] = 0
-
-        return annotation
-
-    def cleanup(self) -> None:
-        pass
-
-    def __str__(self):
-        return Engines.PICOVOICE_EAGLE.value
-
-
-class PyAnnoteBaseEngine(Engine):
-    def __init__(
-            self,
-            auth_token: str,
-            use_gpu: bool,
-            model: str,
-            detection_threshold: float = 0.5) -> None:
-        if use_gpu and torch.cuda.is_available():
-            torch_device = torch.device("cuda:1")
-        else:
-            torch_device = torch.device("cpu")
-        self._model = PretrainedSpeakerEmbedding(
-            embedding=model,
-            device=torch_device,
-            use_auth_token=auth_token)
-        self._audio = Audio(sample_rate=16000)
-        self._inference = Inference(model, window="sliding", step=AUDIO_FRAME_LENGTH_SEC).to(torch_device)
-        self._detection_threshold = detection_threshold
-        super().__init__()
-
-    def enrollment(self, path: str) -> Profile:
-        waveform1, sample_rate = self._audio(path)
-        profile = self._model(waveform1[None])
-        return profile
-
-    def recognition(self, path: str, profile: Profile) -> Tuple[Annotation, float]:
-        tic = time.perf_counter()
-        embeddings = self._inference(path)
-        total_time = time.perf_counter() - tic
-        distance_list = list()
-        for embedding in embeddings:
-            segment, emb = embedding
-            distance = cdist(profile, emb.reshape(1, -1), metric="cosine")
-            distance_list.append((segment.start, segment.end, distance[0, 0]))
-
-        annotation = self._distance_to_annotation(distance_list, threshold=self._detection_threshold)
-
-        return annotation, total_time
-
-    @staticmethod
-    def _distance_to_annotation(distance_list: List[Tuple[Any, Any, Any]], threshold: float) -> Annotation:
-        annotation = Annotation()
-        for start, end, distance in distance_list:
-            if distance < threshold:
-                annotation[Segment(start, end)] = 0
-
-        return annotation.support(0.1)
-
-    def cleanup(self) -> None:
-        self._model = None
-
-
-class PyAnnoteEngine(PyAnnoteBaseEngine):
-    def __init__(self, auth_token: str, use_gpu: bool = False) -> None:
-        super().__init__(
-            auth_token=auth_token,
-            use_gpu=use_gpu,
-            model="pyannote/embedding")
+        return res, process_time, sample_time
 
     def __str__(self) -> str:
-        return Engines.PYANNOTE.value
+        return f"🤖[{Engines.PICOVOICE_EAGLE.value}]"
 
 
-class WeSpeakerEngine(PyAnnoteBaseEngine):
-    def __init__(self, auth_token: str = '', use_gpu: bool = False) -> None:
-        super().__init__(
-            auth_token=auth_token,
-            use_gpu=use_gpu,
-            model="pyannote/wespeaker-voxceleb-resnet34-LM")
+class PyannoteEngine(Engine):
+    def __init__(self) -> None:
+        from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
+        self._model = PretrainedSpeakerEmbedding(embedding="pyannote/embedding")
+
+    def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
+        waveform = \
+            np.concatenate([np.asarray(x, dtype=np.int16) for x in enrollments], axis=0).astype(np.single) / 32768.0
+        waveform = torch.from_numpy(waveform).unsqueeze(0)
+
+        with torch.no_grad():
+            embedding = self._model(waveform).squeeze(0)
+
+        return embedding.tolist()
+
+    def infer(self, pcm: Sequence[int], profiles: Sequence[Sequence[float]]) -> Sequence[float]:
+        waveform = np.asarray(pcm, dtype=np.int16).astype(np.single) / 32768.0
+        waveform = torch.from_numpy(waveform).unsqueeze(0)
+
+        with torch.no_grad():
+            embedding = self._model(waveform).squeeze(0)
+
+            embedding = embedding / np.linalg.norm(embedding)
+
+            profile_tensor = np.asarray(profiles, dtype=np.float32)
+            profile_tensor = profile_tensor / np.linalg.norm(profile_tensor, axis=1, keepdims=True)
+
+            scores = profile_tensor @ embedding
+
+        return scores.tolist()
 
     def __str__(self) -> str:
-        return Engines.WESPEAKER.value
+        return f"🤖[{Engines.PYANNOTE.value}]"
 
 
 class SpeechBrainEngine(Engine):
-    def __init__(self, use_gpu: bool = False) -> None:
-        if use_gpu and torch.cuda.is_available():
-            device = "cuda"
-        else:
-            device = "cpu"
+    def __init__(self) -> None:
+        from speechbrain.inference.classifiers import EncoderClassifier
+        self._model = EncoderClassifier.from_hparams(source="speechbrain/spkrec-ecapa-voxceleb")
 
-        self._torch_device = torch.device(device)
-        self._model = EncoderClassifier.from_hparams(
-            source="speechbrain/spkrec-ecapa-voxceleb",
-            run_opts={"device": device})
-        self._step = AUDIO_FRAME_LENGTH_SEC
-        self._audio = Audio(sample_rate=16000, mono="downmix")
-        self._detection_threshold = 0.5
-        self._duration = 3
-        self.similarity = torch.nn.CosineSimilarity(dim=-1, eps=1e-6)
-        super().__init__()
+    def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
+        waveform = \
+            np.concatenate([np.asarray(x, dtype=np.int16) for x in enrollments], axis=0).astype(np.single) / 32768.0
+        waveform = torch.from_numpy(waveform).unsqueeze(0)
 
-    def enrollment(self, path: str) -> Profile:
-        waveform, _ = torchaudio.load(path)
-        waveform = waveform.to(self._torch_device)
-        profile = self._model.encode_batch(waveform)
-        return profile
+        with torch.no_grad():
+            embedding = self._model.encode_batch(waveform, normalize=False)
 
-    def recognition(self, path: str, profile: Profile) -> Tuple[Annotation, float]:
-        waveform, sample_rate = torchaudio.load(path)
-        waveform = waveform.to(self._torch_device)
-        audio_length = waveform.shape[1] / sample_rate
-        start_time = 0
-        total_time = 0
-        score_list = list()
-        while start_time + self._duration < audio_length:
-            end_time = start_time + self._duration
-            waveform_chunk = waveform[0, int(start_time * sample_rate):int(end_time * sample_rate)]
-            tic = time.perf_counter()
-            embedding = self._model.encode_batch(waveform_chunk)
-            total_time += time.perf_counter() - tic
-            score = self.similarity(profile, embedding)
-            if start_time == 0:
-                score_list.append((start_time, end_time, score[0][0].tolist()))
-            else:
-                score_list.append((end_time - self._step, end_time, score[0][0].tolist()))
-            start_time = start_time + self._step
+        embedding = embedding.squeeze().cpu().numpy().astype(np.float32)
+        return embedding.tolist()
 
-        annotation = self._score_to_annotation(score_list, threshold=self._detection_threshold)
+    def infer(self, pcm: Sequence[int], profiles: Sequence[Sequence[float]]) -> Sequence[float]:
+        waveform = np.asarray(pcm, dtype=np.int16).astype(np.single) / 32768.0
+        waveform = torch.from_numpy(waveform).unsqueeze(0)
 
-        return annotation, total_time
+        with torch.no_grad():
+            embedding = self._model.encode_batch(waveform, normalize=False)
 
-    @staticmethod
-    def _score_to_annotation(score_list: List[Tuple[float, float, float]], threshold: float) -> Annotation:
-        annotation = Annotation()
-        for start, end, score in score_list:
-            if score > threshold:
-                annotation[Segment(start, end)] = 0
+        embedding = embedding.squeeze().cpu().numpy().astype(np.float32)
+        embedding = embedding / np.clip(np.linalg.norm(embedding), 1e-12, None)
 
-        return annotation
+        profile_tensor = np.asarray(profiles, dtype=np.float32)
+        profile_tensor = profile_tensor / np.clip(
+            np.linalg.norm(profile_tensor, axis=1, keepdims=True),
+            1e-12,
+            None,
+        )
 
-    def cleanup(self) -> None:
-        pass
+        scores = profile_tensor @ embedding
+        return scores.tolist()
 
     def __str__(self) -> str:
-        return Engines.SPEECHBRAIN.value
+        return f"🤖[{Engines.SPEECHBRAIN.value}]"
+
+
+__all__ = [
+    "Engine",
+    "Engines"
+]

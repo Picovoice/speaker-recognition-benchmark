@@ -1,88 +1,67 @@
-import glob
-import os.path
+import os
 from enum import Enum
-from typing import *
+from random import Random
+from typing import (
+    Optional,
+    Sequence
+)
 
-from pyannote.core import Annotation
-
-from util import load_rttm, rttm_to_annotation, get_audio_length
-
-Sample = Tuple[str, float, str]
-
-
-class Datasets(Enum):
-    VOX_CONVERSE = "VoxConverse"
+import soundfile
 
 
-class Dataset:
+class Keywords(Enum):
+    ALEXA = 'alexa'
+    COMPUTER = 'computer'
+    JARVIS = 'jarvis'
+    SMART_MIRROR = 'smart mirror'
+    SNOWBOY = "snowboy"
+    VIEW_GLASS = "view glass"
+
+
+class Dataset(object):
+    def __init__(
+            self,
+            keyword: Keywords,
+            num_enrollments: int,
+            seed: Optional[int] = 666,
+    ) -> None:
+        self._keyword = keyword
+        self._enrollments = dict()
+        self._inferences = dict()
+
+        r = Random(seed)
+
+        folder = os.path.join(os.path.dirname(__file__), "audio", keyword.value)
+
+        for speaker in sorted(os.listdir(folder), key=lambda x: int(x.split('_')[1])):
+            speaker_folder = os.path.join(folder, speaker)
+            utterances = list(os.listdir(speaker_folder))
+            if len(utterances) > num_enrollments:
+                r.shuffle(utterances)
+                audios = [soundfile.read(os.path.join(speaker_folder, x), dtype='int16')[0] for x in utterances]
+                self._enrollments[len(self._enrollments)] = audios[:num_enrollments]
+                self._inferences[len(self._inferences)] = audios[num_enrollments:]
+
+    def enrollments(self, speaker: int) -> Sequence[Sequence[int]]:
+        return self._enrollments[speaker]
+
+    def inferences(self, speaker: int) -> Sequence[Sequence[int]]:
+        return self._inferences[speaker]
+
     @property
-    def size(self) -> int:
-        raise NotImplementedError()
-
-    @property
-    def samples(self) -> Sequence[Sample]:
-        raise NotImplementedError()
-
-    def get(self, index: int) -> Tuple[str, float, Annotation]:
-        raise NotImplementedError()
-
-    @staticmethod
-    def sample_info(sample: Sample) -> Tuple[str, float, Annotation]:
-        raise NotImplementedError()
+    def num_speakers(self) -> int:
+        return len(self._enrollments)
 
     def __str__(self) -> str:
-        raise NotImplementedError()
-
-    @classmethod
-    def create(cls, x: Datasets, data_folder: str, label_folder: str, **kwargs: Any) -> "Dataset":
-        try:
-            subclass = {
-                Datasets.VOX_CONVERSE: VoxConverse,
-            }[x]
-        except KeyError:
-            raise ValueError(f"cannot create `{cls.__name__}` of type `{x.value}`")
-        return subclass(data_folder, label_folder, **kwargs)
-
-
-class VoxConverse(Dataset):
-    def __init__(self, data_folder: str, label_folder: str) -> None:
-        self._samples = list()
-
-        files = glob.iglob(os.path.join(data_folder, "*.wav"))
-        for file in files:
-            name = os.path.basename(file)
-            label_path = os.path.join(label_folder, name.replace(".wav", ".rttm"))
-            if not os.path.exists(label_path):
-                raise ValueError(f"cannot find label file `{label_path}`")
-            audio_length = get_audio_length(file)
-            self._samples.append((file, audio_length, label_path))
-
-    @property
-    def size(self) -> int:
-        return len(self._samples)
-
-    @property
-    def samples(self) -> Sequence[Sample]:
-        return self._samples
-
-    def get(self, index: int) -> Tuple[str, float, Annotation]:
-        sample = self._samples[index]
-        return self.sample_info(sample)
-
-    @staticmethod
-    def sample_info(sample: Sample) -> Tuple[str, float, Annotation]:
-        audio_path, audio_length, label_path = sample
-        rttm = load_rttm(label_path)
-        label = rttm_to_annotation(rttm)
-        label.uri = os.path.basename(audio_path)
-        return audio_path, audio_length, label
-
-    def __str__(self) -> str:
-        return "VoxConverse"
+        return f"""💬 {{
+  keyword: {self._keyword.value},
+  num-speakers: {self.num_speakers},
+  num-enrollments: {sum(len(x) for x in self._enrollments.values())}
+  num-inferences: {sum(len(x) for x in self._inferences.values())}
+}}"""
 
 
 __all__ = [
-    "Datasets",
     "Dataset",
-    "Sample"
+    "Keywords",
 ]
