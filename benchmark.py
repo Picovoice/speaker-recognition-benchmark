@@ -21,7 +21,7 @@ def _engine_params_parser(args: argparse.Namespace) -> Dict[str, Any]:
             raise ValueError(f"Engine {args.engine} requires --picovoice-access-key")
         kwargs_engine.update(access_key=args.picovoice_access_key)
         kwargs_engine.update(device=args.picovoice_device)
-    elif engine in {Engines.PYANNOTE}:
+    elif engine in {Engines.PYANNOTE, Engines.WESPEAKER}:
         if args.auth_token is None:
             raise ValueError(f"Engine {args.engine} requires --auth-token")
         kwargs_engine.update(auth_token=args.auth_token)

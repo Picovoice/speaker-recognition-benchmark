@@ -31,12 +31,14 @@ BLUE = rgb_from_hex("#377DFF")
 ENGINE_COLORS = {
     Engines.PICOVOICE_EAGLE: BLUE,
     Engines.PYANNOTE: GREY2,
+    Engines.WESPEAKER: GREY3,
     Engines.SPEECHBRAIN: GREY1,
 }
 
 ENGINE_PRINT_NAMES = {
     Engines.PICOVOICE_EAGLE: "Picovoice\nEagle",
     Engines.PYANNOTE: "pyannote",
+    Engines.WESPEAKER: "WeSpeaker",
     Engines.SPEECHBRAIN: "SpeechBrain",
 }
 
@@ -82,7 +84,59 @@ def _plot_metric(
         RESULTS_FOLDER,
         "plots",
         keyword.value,
-        metric.value.replace(" ", "_") + ".png")
+        metric.value.lower().replace(" ", "_") + ".png")
+    plt.savefig(plot_path, bbox_inches="tight")
+    print(f"Saved plot to {plot_path}")
+
+    if show:
+        plt.show()
+
+    plt.close()
+
+
+def _plot_average_metric(
+        results: dict,
+        metric: Metrics,
+        show: bool) -> None:
+    fig, ax = plt.subplots(figsize=(6, 4))
+    for engine in Engines:
+        engine_value = 0.0
+        for keyword in Keywords:
+            engine_value += results[keyword][engine][metric.value] * 100
+        engine_value = round(engine_value / len(Keywords), 2)
+
+        ax.bar(
+            ENGINE_PRINT_NAMES[engine],
+            engine_value,
+            width=0.5,
+            color=ENGINE_COLORS[engine],
+            edgecolor="none",
+            label=ENGINE_PRINT_NAMES[engine]
+        )
+        ax.text(
+            ENGINE_PRINT_NAMES[engine],
+            engine_value,
+            f"{engine_value:.2f}%",
+            ha="center",
+            va="bottom",
+            fontsize=12,
+            color=ENGINE_COLORS[engine],
+        )
+
+    more_info = ""
+    if metric is Metrics.EER:
+        more_info = " (lower is better)"
+
+    ax.set_ylabel(f"{metric.value} {more_info}", fontsize=12)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    ax.set_yticks([])
+
+    plot_path = os.path.join(
+        RESULTS_FOLDER,
+        "plots",
+        metric.value.lower().replace(" ", "_") + ".png")
     plt.savefig(plot_path, bbox_inches="tight")
     print(f"Saved plot to {plot_path}")
 
@@ -160,6 +214,7 @@ def main() -> None:
     for keyword in Keywords:
         for metric in Metrics:
             _plot_metric(results, keyword, metric, args.show)
+        _plot_average_metric(results, metric, args.show)
     _plot_cpu(results, args.show)
 
 
