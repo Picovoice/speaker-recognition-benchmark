@@ -107,6 +107,8 @@ class PyannoteEngine(Engine):
         waveform = np.asarray(pcm, dtype=np.int16).astype(np.single) / 32768.0
         waveform = torch.from_numpy(waveform).view(1, 1, -1)
 
+        torch.set_num_threads(1)
+
         with torch.no_grad():
             start_time = time.perf_counter()
             embedding = self._model(waveform).flatten()
@@ -143,6 +145,8 @@ class SpeechBrainEngine(Engine):
     def infer(self, pcm: Sequence[int], profiles: Sequence[Sequence[float]]) -> Sequence[float]:
         waveform = np.asarray(pcm, dtype=np.int16).astype(np.single) / 32768.0
         waveform = torch.from_numpy(waveform).unsqueeze(0)
+
+        torch.set_num_threads(1)
 
         with torch.no_grad():
             start_time = time.perf_counter()
