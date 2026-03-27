@@ -59,6 +59,8 @@ class EagleEngine(Engine):
             voice_threshold=voice_threshold)
 
     def enroll(self, enrollments: Sequence[Sequence[int]]) -> Any:
+        start_time = time.perf_counter()
+
         frame_length = self._profiler.frame_length
 
         progress = 0.
@@ -72,16 +74,17 @@ class EagleEngine(Engine):
         profile = self._profiler.export()
         self._profiler.reset()
 
-        return profile
+        end_time = time.perf_counter()
+        return profile, end_time - start_time
 
     def infer(self, pcm: Sequence[int], profiles: Sequence[Any]) -> Tuple[Sequence[float], float]:
         start_time = time.perf_counter()
         res = self._eagle.process(pcm, speaker_profiles=profiles)
-        end_time = time.perf_counter()
 
         if res is None:
             raise RuntimeError()
 
+        end_time = time.perf_counter()
         return res, end_time - start_time
 
     def __str__(self) -> str:
@@ -95,6 +98,8 @@ class PyannoteEngine(Engine):
             token=auth_token)
 
     def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
+        start_time = time.perf_counter()
+
         waveform = \
             np.concatenate([np.asarray(x, dtype=np.int16) for x in enrollments], axis=0).astype(np.single) / 32768.0
         waveform = torch.from_numpy(waveform).unsqueeze(0)
@@ -102,13 +107,14 @@ class PyannoteEngine(Engine):
         with torch.no_grad():
             embedding = self._model(waveform).squeeze(0)
 
-        return embedding.tolist()
+        end_time = time.perf_counter()
+        return embedding.tolist(), end_time - start_time
 
     def infer(self, pcm: Sequence[int], profiles: Sequence[Sequence[float]]) -> Sequence[float]:
+        start_time = time.perf_counter()
+
         waveform = np.asarray(pcm, dtype=np.int16).astype(np.single) / 32768.0
         waveform = torch.from_numpy(waveform).unsqueeze(0)
-
-        start_time = time.perf_counter()
 
         with torch.no_grad():
             embedding = self._model(waveform).squeeze(0)
@@ -134,6 +140,8 @@ class SpeechBrainEngine(Engine):
             run_opts={"device": "cpu"})
 
     def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
+        start_time = time.perf_counter()
+
         waveform = \
             np.concatenate([np.asarray(x, dtype=np.int16) for x in enrollments], axis=0).astype(np.single) / 32768.0
         waveform = torch.from_numpy(waveform).unsqueeze(0)
@@ -142,13 +150,15 @@ class SpeechBrainEngine(Engine):
             embedding = self._model.encode_batch(waveform, normalize=False)
 
         embedding = embedding.squeeze().cpu().numpy().astype(np.float32)
-        return embedding.tolist()
+
+        end_time = time.perf_counter()
+        return embedding.tolist(), end_time - start_time
 
     def infer(self, pcm: Sequence[int], profiles: Sequence[Sequence[float]]) -> Sequence[float]:
+        start_time = time.perf_counter()
+
         waveform = np.asarray(pcm, dtype=np.int16).astype(np.single) / 32768.0
         waveform = torch.from_numpy(waveform).unsqueeze(0)
-
-        start_time = time.perf_counter()
 
         with torch.no_grad():
             embedding = self._model.encode_batch(waveform, normalize=False)
@@ -164,6 +174,7 @@ class SpeechBrainEngine(Engine):
         )
 
         scores = profile_tensor @ embedding
+
         end_time = time.perf_counter()
         return scores.tolist(), end_time - start_time
 

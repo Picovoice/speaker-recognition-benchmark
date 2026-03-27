@@ -57,7 +57,15 @@ def main() -> None:
 
     metric = Metric.create(metric)
 
-    profiles = [engine.enroll(dataset.enrollments(i)) for i in range(dataset.num_speakers)]
+    profiles = list()
+    total_enroll_process_time = 0.0
+    total_enroll_audio_time = 0.0
+    for i in range(dataset.num_speakers):
+        profile, process_time = engine.enroll(dataset.enrollments(i))
+        profiles.append(profile)
+        total_enroll_process_time += process_time
+        for enroll in dataset.enrollments(i):
+            total_enroll_audio_time += len(enroll) / dataset.sample_rate
 
     positives = list()
     negatives = list()
@@ -83,7 +91,9 @@ def main() -> None:
     results = {
         args.metric: eer,
         "process_time": total_process_time,
-        "audio_time": total_audio_time
+        "audio_time": total_audio_time,
+        "enroll_process_time": total_enroll_process_time,
+        "enroll_audio_time": total_enroll_audio_time
     }
     with open(results_path, "w") as f:
         json.dump(results, f, indent=2)
