@@ -8,12 +8,15 @@ from typing import (
 
 import numpy as np
 import torch
+from pyannote.audio.pipelines.speaker_verification import (
+    PretrainedSpeakerEmbedding
+)
+from speechbrain.inference.classifiers import EncoderClassifier
 
 
 class Engines(Enum):
     PICOVOICE_EAGLE = "eagle"
     PYANNOTE = "pyannote"
-    WESPEAKER = "wespeaker"
     SPEECHBRAIN = "speechbrain"
 
 
@@ -32,7 +35,6 @@ class Engine(object):
         children = {
             Engines.PICOVOICE_EAGLE: EagleEngine,
             Engines.PYANNOTE: PyannoteEngine,
-            Engines.WESPEAKER: WeSpeakerEngine,
             Engines.SPEECHBRAIN: SpeechBrainEngine,
         }
 
@@ -72,17 +74,15 @@ class EagleEngine(Engine):
 
         return profile
 
-    def infer(self, pcm: Sequence[int], profiles: Sequence[Any]) -> Tuple[Sequence[float], float, float]:
+    def infer(self, pcm: Sequence[int], profiles: Sequence[Any]) -> Tuple[Sequence[float], float]:
         start_time = time.perf_counter()
         res = self._eagle.process(pcm, speaker_profiles=profiles)
         end_time = time.perf_counter()
+
         if res is None:
             raise RuntimeError()
-        
-        process_time = end_time - start_time
-        audio_time = len(pcm) / self._eagle.sample_rate
 
-        return res, process_time, audio_time
+        return res, end_time - start_time
 
     def __str__(self) -> str:
         return f"🤖[{Engines.PICOVOICE_EAGLE.value}]"
@@ -90,7 +90,6 @@ class EagleEngine(Engine):
 
 class PyannoteEngine(Engine):
     def __init__(self, auth_token: str) -> None:
-        from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
         self._model = PretrainedSpeakerEmbedding(
             embedding="pyannote/embedding",
             token=auth_token)
@@ -98,80 +97,41 @@ class PyannoteEngine(Engine):
     def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
         waveform = \
             np.concatenate([np.asarray(x, dtype=np.int16) for x in enrollments], axis=0).astype(np.single) / 32768.0
-        waveform = torch.from_numpy(waveform).view(1, 1, -1)
+        waveform = torch.from_numpy(waveform).unsqueeze(0)
 
         with torch.no_grad():
-            embedding = self._model(waveform)
+            embedding = self._model(waveform).squeeze(0)
 
-        return embedding.flatten().tolist()
+        return embedding.tolist()
 
     def infer(self, pcm: Sequence[int], profiles: Sequence[Sequence[float]]) -> Sequence[float]:
         waveform = np.asarray(pcm, dtype=np.int16).astype(np.single) / 32768.0
-        waveform = torch.from_numpy(waveform).view(1, 1, -1)
+        waveform = torch.from_numpy(waveform).unsqueeze(0)
 
-        torch.set_num_threads(1)
+        start_time = time.perf_counter()
 
         with torch.no_grad():
-            start_time = time.perf_counter()
-            embedding = self._model(waveform).flatten()
+            embedding = self._model(waveform).squeeze(0)
+
             embedding = embedding / np.linalg.norm(embedding)
 
             profile_tensor = np.asarray(profiles, dtype=np.float32)
             profile_tensor = profile_tensor / np.linalg.norm(profile_tensor, axis=1, keepdims=True)
 
             scores = profile_tensor @ embedding
-            end_time = time.perf_counter()
 
-        return scores.tolist(), end_time - start_time, len(pcm) / 16000
+        end_time = time.perf_counter()
+        return scores.tolist(), end_time - start_time
 
     def __str__(self) -> str:
         return f"🤖[{Engines.PYANNOTE.value}]"
 
 
-class WeSpeakerEngine(Engine):
-    def __init__(self, auth_token: str) -> None:
-        from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
-        self._model = PretrainedSpeakerEmbedding(
-            embedding="pyannote/wespeaker-voxceleb-resnet34-LM",
-            token=auth_token)
-
-    def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
-        waveform = \
-            np.concatenate([np.asarray(x, dtype=np.int16) for x in enrollments], axis=0).astype(np.single) / 32768.0
-        waveform = torch.from_numpy(waveform).view(1, 1, -1)
-
-        with torch.no_grad():
-            embedding = self._model(waveform)
-
-        return embedding.flatten().tolist()
-
-    def infer(self, pcm: Sequence[int], profiles: Sequence[Sequence[float]]) -> Sequence[float]:
-        waveform = np.asarray(pcm, dtype=np.int16).astype(np.single) / 32768.0
-        waveform = torch.from_numpy(waveform).view(1, 1, -1)
-
-        torch.set_num_threads(1)
-
-        with torch.no_grad():
-            start_time = time.perf_counter()
-            embedding = self._model(waveform).flatten()
-            embedding = embedding / np.linalg.norm(embedding)
-
-            profile_tensor = np.asarray(profiles, dtype=np.float32)
-            profile_tensor = profile_tensor / np.linalg.norm(profile_tensor, axis=1, keepdims=True)
-
-            scores = profile_tensor @ embedding
-            end_time = time.perf_counter()
-
-        return scores.tolist(), end_time - start_time, len(pcm) / 16000
-
-    def __str__(self) -> str:
-        return f"🤖[{Engines.WESPEAKER.value}]"
-
-
 class SpeechBrainEngine(Engine):
     def __init__(self) -> None:
-        from speechbrain.inference.classifiers import EncoderClassifier
-        self._model = EncoderClassifier.from_hparams(source="speechbrain/spkrec-ecapa-voxceleb")
+        self._model = EncoderClassifier.from_hparams(
+            source="speechbrain/spkrec-ecapa-voxceleb",
+            run_opts={"device": "cpu"})
 
     def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
         waveform = \
@@ -188,12 +148,10 @@ class SpeechBrainEngine(Engine):
         waveform = np.asarray(pcm, dtype=np.int16).astype(np.single) / 32768.0
         waveform = torch.from_numpy(waveform).unsqueeze(0)
 
-        torch.set_num_threads(1)
+        start_time = time.perf_counter()
 
         with torch.no_grad():
-            start_time = time.perf_counter()
             embedding = self._model.encode_batch(waveform, normalize=False)
-            end_time = time.perf_counter()
 
         embedding = embedding.squeeze().cpu().numpy().astype(np.float32)
         embedding = embedding / np.clip(np.linalg.norm(embedding), 1e-12, None)
@@ -206,7 +164,8 @@ class SpeechBrainEngine(Engine):
         )
 
         scores = profile_tensor @ embedding
-        return scores.tolist(), end_time - start_time, len(pcm) / 16000
+        end_time = time.perf_counter()
+        return scores.tolist(), end_time - start_time
 
     def __str__(self) -> str:
         return f"🤖[{Engines.SPEECHBRAIN.value}]"

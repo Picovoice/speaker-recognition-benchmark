@@ -31,14 +31,14 @@ BLUE = rgb_from_hex("#377DFF")
 ENGINE_COLORS = {
     Engines.PICOVOICE_EAGLE: BLUE,
     Engines.PYANNOTE: GREY2,
-    Engines.WESPEAKER: GREY3,
+    # Engines.WESPEAKER: GREY3,
     Engines.SPEECHBRAIN: GREY1,
 }
 
 ENGINE_PRINT_NAMES = {
     Engines.PICOVOICE_EAGLE: "Picovoice\nEagle",
     Engines.PYANNOTE: "pyannote",
-    Engines.WESPEAKER: "WeSpeaker",
+    # Engines.WESPEAKER: "WeSpeaker",
     Engines.SPEECHBRAIN: "SpeechBrain",
 }
 

@@ -35,7 +35,7 @@ class Dataset(object):
 
         for speaker in sorted(os.listdir(folder), key=lambda x: int(x.split('_')[1])):
             speaker_folder = os.path.join(folder, speaker)
-            utterances = list(os.listdir(speaker_folder))
+            utterances = list(sorted(os.listdir(speaker_folder)))
             if len(utterances) > num_enrollments:
                 r.shuffle(utterances)
                 audios = [soundfile.read(os.path.join(speaker_folder, x), dtype='int16')[0] for x in utterances]
@@ -51,6 +51,10 @@ class Dataset(object):
     @property
     def num_speakers(self) -> int:
         return len(self._enrollments)
+
+    @property
+    def sample_rate(self) -> int:
+        return 16000
 
     def __str__(self) -> str:
         return f"""💬 {{

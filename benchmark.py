@@ -6,6 +6,8 @@ from typing import (
     Dict
 )
 
+import torch
+
 from dataset import *
 from engine import *
 from metric import *
@@ -21,7 +23,7 @@ def _engine_params_parser(args: argparse.Namespace) -> Dict[str, Any]:
             raise ValueError(f"Engine {args.engine} requires --picovoice-access-key")
         kwargs_engine.update(access_key=args.picovoice_access_key)
         kwargs_engine.update(device=args.picovoice_device)
-    elif engine in {Engines.PYANNOTE, Engines.WESPEAKER}:
+    elif engine in {Engines.PYANNOTE}:
         if args.auth_token is None:
             raise ValueError(f"Engine {args.engine} requires --auth-token")
         kwargs_engine.update(auth_token=args.auth_token)
@@ -44,6 +46,8 @@ def main() -> None:
     metric = Metrics(args.metric)
     num_enrollments = args.num_enrollments
 
+    torch.set_num_threads(1)
+
     dataset = Dataset(keyword=keyword, num_enrollments=num_enrollments)
     print(dataset)
 
@@ -61,7 +65,8 @@ def main() -> None:
     total_audio_time = 0.0
     for i in range(dataset.num_speakers):
         for inference in dataset.inferences(i):
-            probs, process_time, audio_time = engine.infer(pcm=inference, profiles=profiles)
+            probs, process_time = engine.infer(pcm=inference, profiles=profiles)
+            audio_time = len(inference) / dataset.sample_rate
             positives.append(probs[i])
             negatives.extend(probs[:i])
             negatives.extend(probs[i + 1:])
