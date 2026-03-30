@@ -31,14 +31,12 @@ BLUE = rgb_from_hex("#377DFF")
 ENGINE_COLORS = {
     Engines.PICOVOICE_EAGLE: BLUE,
     Engines.PYANNOTE: GREY2,
-    # Engines.WESPEAKER: GREY3,
     Engines.SPEECHBRAIN: GREY1,
 }
 
 ENGINE_PRINT_NAMES = {
     Engines.PICOVOICE_EAGLE: "Picovoice\nEagle",
     Engines.PYANNOTE: "pyannote",
-    # Engines.WESPEAKER: "WeSpeaker",
     Engines.SPEECHBRAIN: "SpeechBrain",
 }
 
@@ -194,6 +192,54 @@ def _plot_cpu(
     plt.close()
 
 
+def _plot_mem(
+        results: dict,
+        show: bool) -> None:
+    fig, ax = plt.subplots(figsize=(6, 4))
+    for engine in Engines:
+        size_bytes = 0.0
+        for keyword in Keywords:
+            size_bytes += results[keyword][engine]["size_bytes"]
+        size_bytes /= len(Keywords)
+
+        size_bytes /= 1024 * 1024
+
+        ax.barh(
+            ENGINE_PRINT_NAMES[engine],
+            size_bytes,
+            height=0.5,
+            color=ENGINE_COLORS[engine],
+            edgecolor="none",
+            label=ENGINE_PRINT_NAMES[engine],
+        )
+        ax.text(
+            size_bytes + 10,
+            ENGINE_PRINT_NAMES[engine],
+            f"{size_bytes:.2f}MB",
+            ha="center",
+            va="center",
+            fontsize=12,
+            color=ENGINE_COLORS[engine],
+        )
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["bottom"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.set_xticks([])
+    plt.title("MB required to initialize the model", fontsize=12)
+    plot_path = os.path.join(
+        RESULTS_FOLDER,
+        "plots",
+        "mem.png")
+    plt.savefig(plot_path, bbox_inches="tight")
+    print(f"Saved plot to {plot_path}")
+
+    if show:
+        plt.show()
+
+    plt.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--show", action="store_true")
@@ -216,6 +262,7 @@ def main() -> None:
             _plot_metric(results, keyword, metric, args.show)
         _plot_average_metric(results, metric, args.show)
     _plot_cpu(results, args.show)
+    _plot_mem(results, args.show)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import os
 import time
 from enum import Enum
 from typing import (
@@ -7,6 +8,7 @@ from typing import (
 )
 
 import numpy as np
+import psutil
 import torch
 from pyannote.audio.pipelines.speaker_verification import (
     PretrainedSpeakerEmbedding
@@ -25,6 +27,10 @@ class Engine(object):
         raise NotImplementedError
 
     def infer(self, pcm: Sequence[int], profiles: Sequence[Sequence[float]]) -> Sequence[float]:
+        raise NotImplementedError
+
+    @property
+    def size_bytes(self) -> int:
         raise NotImplementedError
 
     def __str__(self) -> str:
@@ -53,10 +59,13 @@ class EagleEngine(Engine):
             device=device,
             min_enrollment_chunks=3,
             voice_threshold=voice_threshold)
+        pre_bytes = psutil.Process(os.getpid()).memory_info().rss
         self._eagle = pveagle.create_recognizer(
             access_key=access_key,
             device=device,
             voice_threshold=voice_threshold)
+        post_bytes = psutil.Process(os.getpid()).memory_info().rss
+        self._size_bytes = post_bytes - pre_bytes
 
     def enroll(self, enrollments: Sequence[Sequence[int]]) -> Any:
         start_time = time.perf_counter()
@@ -87,15 +96,23 @@ class EagleEngine(Engine):
         end_time = time.perf_counter()
         return res, end_time - start_time
 
+    @property
+    def size_bytes(self) -> int:
+        return self._size_bytes
+
     def __str__(self) -> str:
         return f"🤖[{Engines.PICOVOICE_EAGLE.value}]"
 
 
 class PyannoteEngine(Engine):
     def __init__(self, auth_token: str) -> None:
+        pre_bytes = psutil.Process(os.getpid()).memory_info().rss
         self._model = PretrainedSpeakerEmbedding(
             embedding="pyannote/embedding",
+            device="cpu",
             token=auth_token)
+        post_bytes = psutil.Process(os.getpid()).memory_info().rss
+        self._size_bytes = post_bytes - pre_bytes
 
     def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
         start_time = time.perf_counter()
@@ -129,15 +146,22 @@ class PyannoteEngine(Engine):
         end_time = time.perf_counter()
         return scores.tolist(), end_time - start_time
 
+    @property
+    def size_bytes(self) -> int:
+        return self._size_bytes
+
     def __str__(self) -> str:
         return f"🤖[{Engines.PYANNOTE.value}]"
 
 
 class SpeechBrainEngine(Engine):
     def __init__(self) -> None:
+        pre_bytes = psutil.Process(os.getpid()).memory_info().rss
         self._model = EncoderClassifier.from_hparams(
             source="speechbrain/spkrec-ecapa-voxceleb",
             run_opts={"device": "cpu"})
+        post_bytes = psutil.Process(os.getpid()).memory_info().rss
+        self._size_bytes = post_bytes - pre_bytes
 
     def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
         start_time = time.perf_counter()
@@ -177,6 +201,10 @@ class SpeechBrainEngine(Engine):
 
         end_time = time.perf_counter()
         return scores.tolist(), end_time - start_time
+
+    @property
+    def size_bytes(self) -> int:
+        return self._size_bytes
 
     def __str__(self) -> str:
         return f"🤖[{Engines.SPEECHBRAIN.value}]"

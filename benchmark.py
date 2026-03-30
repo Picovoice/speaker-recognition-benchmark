@@ -82,7 +82,7 @@ def main() -> None:
             total_audio_time += audio_time
 
     eer = metric.compute(positives, negatives)
-    rtf = total_process_time/total_audio_time
+    rtf = total_process_time / total_audio_time
 
     print(f"{metric} {eer * 100.:.2f}%")
     print(f"🚀 RTF {rtf:.02f}")
@@ -90,6 +90,7 @@ def main() -> None:
     results_path = os.path.join(RESULTS_FOLDER, "data", args.keyword, f"{args.engine}.json")
     results = {
         args.metric: eer,
+        "size_bytes": engine.size_bytes,
         "process_time": total_process_time,
         "audio_time": total_audio_time,
         "enroll_process_time": total_enroll_process_time,
@@ -97,6 +98,7 @@ def main() -> None:
     }
     with open(results_path, "w") as f:
         json.dump(results, f, indent=2)
+
 
 if __name__ == "__main__":
     main()
