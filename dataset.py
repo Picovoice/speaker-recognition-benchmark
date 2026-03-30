@@ -23,7 +23,7 @@ class Dataset(object):
             self,
             keyword: Keywords,
             num_enrollments: int,
-            seed: Optional[int] = 666,
+            seed: Optional[int] = 18670701, # 🇨🇦
     ) -> None:
         self._keyword = keyword
         self._enrollments = dict()
