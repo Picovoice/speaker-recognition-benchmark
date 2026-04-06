@@ -5,8 +5,9 @@ pveagle==3.0.0
 pyannote.audio==4.0.4
 requests
 soundfile
-speechbrain==1.0.3
+speechbrain @ git+https://github.com/speechbrain/speechbrain.git@aca5e41a34b3bcbe532640f2d3d0f6de3fd50ebe
 torch==2.11.0
 torchaudio==2.11.0
+torchcodec==0.11.0
 numpy==2.3.5
 tqdm
