@@ -119,7 +119,7 @@ RAM, and NVMe storage.
 |     Engine      | Model Size |
 |:---------------:|:----------:|
 | Picovoice Eagle |   4.47MB   |
-|   SpeechBrain   |   99.21MB  |
-|    pyannote     |  107.25MB  |
+|   SpeechBrain   |  117.48MB  |
+|    pyannote     |  46.45MB   |
 
 ![](./results/plots/mem.png)

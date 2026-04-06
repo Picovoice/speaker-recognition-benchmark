@@ -1,5 +1,6 @@
 huggingface_hub==0.36.0
 matplotlib
+omegaconf
 psutil
 pveagle==3.0.0
 pyannote.audio==4.0.4

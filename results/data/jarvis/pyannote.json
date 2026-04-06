@@ -1,8 +1,8 @@
 {
   "EER": 0.004605729324830448,
-  "size_bytes": 104058880,
-  "process_time": 4.123058301000128,
+  "size_bytes": 48746496,
+  "process_time": 3.6269705798476934,
   "audio_time": 788.5440000000007,
-  "enroll_process_time": 1.6624094900071213,
+  "enroll_process_time": 1.4061324312351644,
   "enroll_audio_time": 337.37600000000026
 }
