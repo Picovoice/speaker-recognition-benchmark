@@ -6,6 +6,7 @@ pyannote.audio==4.0.4
 requests
 soundfile
 speechbrain==1.0.3
-torch==2.8.0
+torch==2.11.0
+torchaudio==2.11.0
 numpy==2.3.5
 tqdm
