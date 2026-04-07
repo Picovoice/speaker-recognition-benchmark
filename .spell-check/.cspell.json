@@ -24,6 +24,7 @@
     "**/env/**",
     "**/pretrained_models/**",
     "**/tmp/**",
-    "**/__pycache__/**"
+    "**/__pycache__/**",
+    "**/requirements.txt"
   ]
 }
