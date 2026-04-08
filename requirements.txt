@@ -1,13 +1,14 @@
 huggingface_hub==0.36.0
 matplotlib
-onnxruntime==1.16.3
-pveagle==2.0.0
-pyannote.audio==3.1.1
-pyannote.metrics==3.2.1
+omegaconf
+psutil
+pveagle==3.0.0
+pyannote.audio==4.0.4
 requests
-scipy==1.12.0
 soundfile
-speechbrain==0.5.16
-torch==2.2.0
-numpy==1.26.4
+speechbrain @ git+https://github.com/speechbrain/speechbrain.git@aca5e41a34b3bcbe532640f2d3d0f6de3fd50ebe
+torch==2.11.0
+torchaudio==2.11.0
+torchcodec==0.11.0
+numpy==2.3.5
 tqdm
