@@ -23,10 +23,10 @@ class Engines(Enum):
 
 
 class Engine(object):
-    def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
+    def enroll(self, enrollments: Sequence[Sequence[int]]) -> Any:
         raise NotImplementedError
 
-    def infer(self, pcm: Sequence[int], profiles: Sequence[Sequence[float]]) -> Sequence[float]:
+    def infer(self, pcm: Sequence[int], profiles: Sequence[Any]) -> Tuple[Sequence[float], float]:
         raise NotImplementedError
 
     @property
@@ -114,7 +114,7 @@ class PyannoteEngine(Engine):
         post_bytes = psutil.Process(os.getpid()).memory_info().rss
         self._size_bytes = post_bytes - pre_bytes
 
-    def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
+    def enroll(self, enrollments: Sequence[Sequence[int]]) -> Any:
         start_time = time.perf_counter()
 
         waveform = \
@@ -127,7 +127,7 @@ class PyannoteEngine(Engine):
         end_time = time.perf_counter()
         return embedding.tolist(), end_time - start_time
 
-    def infer(self, pcm: Sequence[int], profiles: Sequence[Sequence[float]]) -> Sequence[float]:
+    def infer(self, pcm: Sequence[int], profiles: Sequence[Any]) -> Tuple[Sequence[float], float]:
         start_time = time.perf_counter()
 
         waveform = np.asarray(pcm, dtype=np.int16).astype(np.single) / 32768.0
@@ -163,7 +163,7 @@ class SpeechBrainEngine(Engine):
         post_bytes = psutil.Process(os.getpid()).memory_info().rss
         self._size_bytes = post_bytes - pre_bytes
 
-    def enroll(self, enrollments: Sequence[Sequence[int]]) -> Sequence[float]:
+    def enroll(self, enrollments: Sequence[Sequence[int]]) -> Any:
         start_time = time.perf_counter()
 
         waveform = \
@@ -178,7 +178,7 @@ class SpeechBrainEngine(Engine):
         end_time = time.perf_counter()
         return embedding.tolist(), end_time - start_time
 
-    def infer(self, pcm: Sequence[int], profiles: Sequence[Sequence[float]]) -> Sequence[float]:
+    def infer(self, pcm: Sequence[int], profiles: Sequence[Any]) -> Tuple[Sequence[float], float]:
         start_time = time.perf_counter()
 
         waveform = np.asarray(pcm, dtype=np.int16).astype(np.single) / 32768.0
