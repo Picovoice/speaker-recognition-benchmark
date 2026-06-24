@@ -109,8 +109,8 @@ RAM, and NVMe storage.
 |     Engine      |   EER   |
 |:---------------:|:-------:|
 | Picovoice Eagle |  0.18%  |
-|   SpeechBrain   |  0.49%  |
-|    pyannote     |  0.70%  |
+|   SpeechBrain   |  0.70%  |
+|    pyannote     |  0.49%  |
 
 ![](./results/plots/eer.png)
 
