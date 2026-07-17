@@ -7,7 +7,7 @@ pyannote.audio==4.0.4
 requests
 soundfile
 speechbrain @ git+https://github.com/speechbrain/speechbrain.git@aca5e41a34b3bcbe532640f2d3d0f6de3fd50ebe
-torch==2.11.0
+torch==2.13.0
 torchaudio==2.11.0
 torchcodec==0.11.0
 numpy==2.3.5
